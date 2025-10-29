@@ -1,0 +1,282 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interactive Concept Map</title>
+<style>
+  html, body {
+    margin:0; padding:0; width:100%; height:100%; overflow:hidden;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    background:#f9f9f9;
+  }
+  svg { width:100%; height:100%; display:block; }
+  #controls {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  select, button {
+    font-size: 14px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    background: white;
+    cursor: pointer;
+  }
+  button:hover {
+    background: #f0f0f0;
+  }
+  .pdf { fill: #c6dbef; stroke: #6baed6; stroke-width:2px; cursor:grab; }
+  .cluster { fill:#f3f7ff; stroke:#d6e3ff; stroke-width:2px; cursor:pointer; }
+  .cluster.ref-cluster { stroke:#a60000; stroke-width:2.5px; }
+  .label { font-size:12px; fill:#111; pointer-events:none; text-anchor:middle; dominant-baseline:middle; }
+  .link { stroke:#999; stroke-width:1.5px; }
+  .ref-link { stroke:#a60000; stroke-width:2px; stroke-dasharray:4,4; visibility:hidden; }
+  circle, rect { transition: fill 0.25s, stroke 0.25s; }
+  circle:hover, rect:hover { opacity:0.85; }
+  rect { rx:5px; ry:5px; }
+  .hovered-ref { visibility: visible !important; stroke-opacity: 1; }
+</style>
+</head>
+<body>
+<div id="controls">
+  <select id="thresholdSelect">
+    <option value="5">Show top-5 relations</option>
+    <option value="10" selected>Show top-10 relations</option>
+    <option value="15">Show top-15 relations</option>
+  </select>
+  <button id="showAllBtn">Show All</button>
+</div>
+<svg id="conceptMap"></svg>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+// --- Data from JSON ---
+const pdfs = [{"id": "iv_ws24_01_intro.pdf", "clusters": [{"id": "Kursziele und Definitionen", "hasRelation": false}, {"id": "InfoVis Konzept", "hasRelation": true}]}, {"id": "iv_ws24_02_perception.pdf", "clusters": [{"id": "Information Visualization", "hasRelation": true}, {"id": "Perception and Color", "hasRelation": false}, {"id": "Attention and Expectation", "hasRelation": false}]}, {"id": "iv_ws24_03_channels.pdf", "clusters": [{"id": "Kanäle und ihre Bedeutung", "hasRelation": false}, {"id": "Ausdrucksstärke und Effektivität", "hasRelation": false}, {"id": "Visuelle Sprache als Zeichensystem", "hasRelation": false}]}, {"id": "iv_ws24_04_good_vis.pdf", "clusters": [{"id": "s Graphical Excellence", "hasRelation": false}, {"id": "Data Representation Best Practices", "hasRelation": false}, {"id": "Design Principles and Pitfalls", "hasRelation": false}, {"id": "Avoiding Chartjunk and Misrepresentation", "hasRelation": false}]}, {"id": "iv_ws24_05_tasks_types_dimensions.pdf", "clusters": [{"id": "Daten- und Informationsvisualisierung", "hasRelation": true}, {"id": "Informationscodierung", "hasRelation": true}, {"id": "Datentypen und -strukturen", "hasRelation": true}, {"id": "Datenmodelle", "hasRelation": false}, {"id": "Datenspeicherung und -verarbeitung", "hasRelation": false}, {"id": "Dimensionsreduktion", "hasRelation": false}]}, {"id": "iv_ws24_06_multidimensional.pdf", "clusters": [{"id": "Eindimensionale Daten", "hasRelation": false}, {"id": "Datenvisualisierung mit Linien- und Balken", "hasRelation": false}, {"id": "Kreisdiagramme und Boxplots", "hasRelation": false}, {"id": "St Streuungs- und Violinplots", "hasRelation": false}, {"id": "Mehrdimensionale Daten", "hasRelation": true}, {"id": "Geometrische Transformationen und parallele Koordinaten", "hasRelation": true}, {"id": "Glyph-basierte Visualisierungen", "hasRelation": false}, {"id": "Techniken zur Reduzierung von Clutter", "hasRelation": false}]}, {"id": "iv_ws24_07_graphs.pdf", "clusters": [{"id": "Graph Fundamentals", "hasRelation": true}, {"id": "Data Structures and Challenges", "hasRelation": true}, {"id": "Layout and Quality", "hasRelation": false}, {"id": "Force-directed and Radial Tree Layouts", "hasRelation": true}, {"id": "Animated Graphs and Studies", "hasRelation": false}, {"id": "Chord Diagrams and Display Modification", "hasRelation": false}, {"id": "Scalability Challenges and Solutions", "hasRelation": false}]}, {"id": "iv_ws24_08_hierarchies.pdf", "clusters": [{"id": "Hierarchische Daten", "hasRelation": true}, {"id": "Baumdarstellungen", "hasRelation": true}, {"id": "Schichten und Karten", "hasRelation": true}, {"id": "Treemaps", "hasRelation": false}, {"id": "3D-Ansätze und weitere Techniken", "hasRelation": false}]}, {"id": "iv_ws24_09_specific.pdf", "clusters": [{"id": "Idioms for specific data types", "hasRelation": true}, {"id": "Temporal Data", "hasRelation": true}, {"id": "Network and Flow Data", "hasRelation": false}, {"id": "Geographic Data", "hasRelation": false}, {"id": "Case Studies", "hasRelation": false}, {"id": "Miscellaneous", "hasRelation": false}]}, {"id": "iv_ws24_10_interaction.pdf", "clusters": [{"id": "Information Visualization", "hasRelation": true}, {"id": "Zooming User Interfaces (ZUI)", "hasRelation": false}, {"id": "Focus+Context Techniques", "hasRelation": false}, {"id": "Interaction Techniques", "hasRelation": false}, {"id": "Multiple Coordinated Views (MCV)", "hasRelation": false}, {"id": "Data Filtering and Sorting", "hasRelation": false}, {"id": "Brushing and Angular Brush", "hasRelation": true}]}, {"id": "iv_ws24_11_evaluation.pdf", "clusters": [{"id": "Evaluation und Bewertung", "hasRelation": false}, {"id": "Projektansätze und Methoden", "hasRelation": false}, {"id": "Experimentelles Design", "hasRelation": false}, {"id": "Statistische Auswertung", "hasRelation": false}, {"id": "Überprüfung und Validierung", "hasRelation": false}]}];
+const relations = [{"from": "iv_ws24_02_perception.pdf_Information Visualization", "to": "iv_ws24_10_interaction.pdf_Information Visualization", "score": 0.601}, {"from": "iv_ws24_07_graphs.pdf_Graph Fundamentals", "to": "iv_ws24_09_specific.pdf_Idioms for specific data types", "score": 0.599}, {"from": "iv_ws24_05_tasks_types_dimensions.pdf_Daten- und Informationsvisualisierung", "to": "iv_ws24_10_interaction.pdf_Information Visualization", "score": 0.592}, {"from": "iv_ws24_05_tasks_types_dimensions.pdf_Daten- und Informationsvisualisierung", "to": "iv_ws24_07_graphs.pdf_Graph Fundamentals", "score": 0.584}, {"from": "iv_ws24_01_intro.pdf_InfoVis Konzept", "to": "iv_ws24_02_perception.pdf_Information Visualization", "score": 0.567}, {"from": "iv_ws24_06_multidimensional.pdf_Geometrische Transformationen und parallele Koordinaten", "to": "iv_ws24_10_interaction.pdf_Brushing and Angular Brush", "score": 0.566}, {"from": "iv_ws24_07_graphs.pdf_Data Structures and Challenges", "to": "iv_ws24_08_hierarchies.pdf_Hierarchische Daten", "score": 0.553}, {"from": "iv_ws24_06_multidimensional.pdf_Mehrdimensionale Daten", "to": "iv_ws24_10_interaction.pdf_Brushing and Angular Brush", "score": 0.542}, {"from": "iv_ws24_01_intro.pdf_InfoVis Konzept", "to": "iv_ws24_10_interaction.pdf_Information Visualization", "score": 0.54}, {"from": "iv_ws24_05_tasks_types_dimensions.pdf_Daten- und Informationsvisualisierung", "to": "iv_ws24_09_specific.pdf_Idioms for specific data types", "score": 0.54}, {"from": "iv_ws24_07_graphs.pdf_Force-directed and Radial Tree Layouts", "to": "iv_ws24_08_hierarchies.pdf_Baumdarstellungen", "score": 0.529}, {"from": "iv_ws24_01_intro.pdf_InfoVis Konzept", "to": "iv_ws24_05_tasks_types_dimensions.pdf_Daten- und Informationsvisualisierung", "score": 0.526}, {"from": "iv_ws24_05_tasks_types_dimensions.pdf_Daten- und Informationsvisualisierung", "to": "iv_ws24_08_hierarchies.pdf_Schichten und Karten", "score": 0.523}, {"from": "iv_ws24_05_tasks_types_dimensions.pdf_Datentypen und -strukturen", "to": "iv_ws24_09_specific.pdf_Temporal Data", "score": 0.521}, {"from": "iv_ws24_05_tasks_types_dimensions.pdf_Informationscodierung", "to": "iv_ws24_09_specific.pdf_Idioms for specific data types", "score": 0.496}];
+
+// --- Sort relations by score descending ---
+relations.sort((a, b) => b.score - a.score);
+
+// --- SVG setup ---
+const svg = d3.select("#conceptMap");
+const g = svg.append("g");
+svg.call(d3.zoom().scaleExtent([0.5, 2.5]).on("zoom", (event) => g.attr("transform", event.transform)));
+
+// --- Layout parameters ---
+const pdfSpacingX = 230, pdfSpacingY = 200;
+const clusterSpacing = 80;
+
+// --- Nodes ---
+const nodes = [];
+pdfs.forEach((pdf, i) => {
+  const baseX = 150 + i * pdfSpacingX;
+  const baseY = 100 + pdfSpacingY;
+
+  nodes.push({ id: pdf.id, type: "pdf", x: baseX, y: baseY });
+
+  const numClusters = pdf.clusters?.length || 0;
+  pdf.clusters?.forEach((cl, j) => {
+    const offset = (j - (numClusters - 1) / 2) * 36;
+    const cx = baseX + offset;
+    const cy = baseY + (j + 1) * clusterSpacing;
+
+    const clusterId = `${pdf.id}_${cl.id}`;
+    nodes.push({
+      id: clusterId,
+      type: "cluster",
+      x: cx,
+      y: cy,
+      label: cl.id
+    });
+  });
+});
+
+function getNode(id) { return nodes.find(n => n.id === id); }
+
+// --- Groups ---
+const linkGroup = g.append("g").attr("class", "links");
+const nodeGroup = g.append("g").attr("class", "nodes");
+
+// --- Draw nodes ---
+const node = nodeGroup.selectAll(".node")
+  .data(nodes)
+  .enter()
+  .append("g")
+  .attr("class", "node")
+  .attr("transform", d => `translate(${d.x},${d.y})`)
+  .call(
+    d3.drag()
+      .on("start", dragStarted)
+      .on("drag", dragged)
+      .on("end", dragEnded)
+  );
+
+node.filter(d => d.type === "pdf")
+  .append("circle")
+  .attr("class", "pdf")
+  .attr("r", 25);
+
+const rectW = 170, rectH = 40;
+node.filter(d => d.type === "cluster")
+  .append("rect")
+  .attr("class", "cluster")
+  .attr("x", -rectW/2)
+  .attr("y", -rectH/2)
+  .attr("width", rectW)
+  .attr("height", rectH);
+
+const textNodes = node.append("text")
+  .attr("text-anchor", "middle")
+  .attr("alignment-baseline", "middle")
+  .attr("font-size", "12px")
+  .attr("fill", "#111")
+  .text(d => {
+    if (d.type === "pdf") return d.id.replace(".pdf","");
+    if (d.type === "cluster") return truncateText(d.label, rectW - 10);
+  });
+
+textNodes.filter(d => d.type === "cluster")
+  .append("title")
+  .text(d => d.label);
+
+function truncateText(text, maxWidth) {
+  // measure with a temporary element appended to the document body (not the svg variable which might be transformed by zoom)
+  const temp = d3.select("body").append("svg").attr("visibility", "hidden").append("text")
+    .attr("font-size", "12px")
+    .text(text);
+  let truncated = text;
+  while (temp.node().getComputedTextLength() > maxWidth && truncated.length > 0) {
+    truncated = truncated.slice(0, -1);
+    temp.text(truncated + "…");
+  }
+  const result = temp.text();
+  d3.select(temp.node().parentNode).remove();
+  return result;
+}
+
+// --- Build links dynamically ---
+let linkElements;
+let toggled = new Set();
+let currentTopN = 10;
+
+function updateLinks(topN) {
+  currentTopN = topN;
+  const selectedRelations = relations.slice(0, topN);
+  const links = [];
+
+  // PDF → Cluster links
+  pdfs.forEach(pdf => {
+    pdf.clusters?.forEach(cl => {
+      links.push({ source: pdf.id, target: `${pdf.id}_${cl.id}`, type: "link" });
+    });
+  });
+
+  // Reference links
+  selectedRelations.forEach(r => {
+    if (getNode(r.from) && getNode(r.to)) {
+      links.push({ source: r.from, target: r.to, type: "ref" });
+    }
+  });
+
+  linkGroup.selectAll("line").remove();
+
+  linkElements = linkGroup.selectAll("line")
+    .data(links)
+    .enter()
+    .append("line")
+    .attr("x1", d => getNode(d.source).x)
+    .attr("y1", d => getNode(d.source).y)
+    .attr("x2", d => getNode(d.target).x)
+    .attr("y2", d => getNode(d.target).y)
+    .attr("stroke-width", d => d.type === "ref" ? 2 : 1.5)
+    .attr("stroke", d => d.type === "ref" ? "red" : "#999")
+    .attr("stroke-dasharray", d => d.type === "ref" ? "5,5" : null)
+    .attr("opacity", d => d.type === "ref" ? 0.8 : 0.6)
+    .attr("visibility", d => d.type === "ref" ? "hidden" : "visible");
+
+  const relatedClusters = new Set();
+  selectedRelations.forEach(r => {
+    if (r.from.includes("_")) relatedClusters.add(r.from);
+    if (r.to.includes("_")) relatedClusters.add(r.to);
+  });
+
+  node.selectAll("rect.cluster")
+    .attr("class", d => relatedClusters.has(d.id) ? "cluster ref-cluster" : "cluster");
+
+  toggled = new Set();
+
+  function updateRefVisibility() {
+    linkElements.each(function(d) {
+      if (d.type !== "ref") return;
+      const visible = d.hovered || toggled.has(d.source) || toggled.has(d.target);
+      d3.select(this).attr("visibility", visible ? "visible" : "hidden");
+    });
+  }
+
+  node.filter(d => d.type === "cluster")
+    .on("mouseover", (event, d) => {
+      linkElements.each(function(l) {
+        if (l.type === "ref" && (l.source === d.id || l.target === d.id)) l.hovered = true;
+      });
+      updateRefVisibility();
+    })
+    .on("mouseout", (event, d) => {
+      linkElements.each(function(l) {
+        if (l.type === "ref" && (l.source === d.id || l.target === d.id)) l.hovered = false;
+      });
+      updateRefVisibility();
+    })
+    .on("click", (event, d) => {
+      if (toggled.has(d.id)) toggled.delete(d.id);
+      else toggled.add(d.id);
+      updateRefVisibility();
+      event.stopPropagation();
+    });
+
+  svg.on("click", () => {
+    toggled.clear();
+    updateRefVisibility();
+  });
+
+  // Attach "Show All" button functionality
+  document.getElementById("showAllBtn").onclick = () => {
+    linkElements.each(function(d) {
+      if (d.type === "ref") d3.select(this).attr("visibility", "visible");
+    });
+  };
+}
+
+updateLinks(10);
+
+document.getElementById("thresholdSelect").addEventListener("change", e => {
+  const topN = parseInt(e.target.value);
+  updateLinks(topN);
+});
+
+// --- Dragging logic ---
+function dragStarted(event, d) {
+  d3.select(this).raise().classed("active", true);
+}
+function dragged(event, d) {
+  d.x = event.x; d.y = event.y;
+  d3.select(this).attr("transform", `translate(${d.x},${d.y})`);
+  if (!linkElements) return;
+  linkElements
+    .filter(l => l.source === d.id || l.target === d.id)
+    .attr("x1", l => getNode(l.source).x)
+    .attr("y1", l => getNode(l.source).y)
+    .attr("x2", l => getNode(l.target).x)
+    .attr("y2", l => getNode(l.target).y);
+}
+function dragEnded(event, d) {
+  d3.select(this).classed("active", false);
+}
+</script>
+</body>
+</html>
